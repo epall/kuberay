@@ -1000,6 +1000,12 @@ func (r *RayClusterReconciler) reconcilePods(ctx context.Context, instance *rayv
 		return nil
 	}
 
+	// Check expectations before listing head Pods. The expectation's cached Get
+	// may observe a newly created Pod that an earlier List did not include.
+	// Using that stale list after satisfying the expectation could create a
+	// duplicate head Pod.
+	headExpectationsSatisfied := r.rayClusterScaleExpectation.IsSatisfied(ctx, instance.Namespace, instance.Name, expectations.HeadGroup)
+
 	// check if all the pods exist
 	headPods := corev1.PodList{}
 	if err := r.List(ctx, &headPods, common.RayClusterHeadPodsAssociationOptions(instance).ToListOptions()...); err != nil {
@@ -1017,7 +1023,7 @@ func (r *RayClusterReconciler) reconcilePods(ctx context.Context, instance *rayv
 		}
 	}
 	// Reconcile head Pod
-	if !r.rayClusterScaleExpectation.IsSatisfied(ctx, instance.Namespace, instance.Name, expectations.HeadGroup) {
+	if !headExpectationsSatisfied {
 		logger.Info("reconcilePods", "Expectation", "NotSatisfiedHeadExpectations, reconcile head later")
 	} else if len(headPods.Items) == 1 {
 		headPod := headPods.Items[0]
